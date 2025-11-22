@@ -1,0 +1,33 @@
+# MuseGUI Requirements
+# Core dependencies for the graphical user interface
+
+# GUI Framework
+PyQt6>=6.4.0
+PyQt6-Qt6>=6.4.0
+
+# Real-time Visualization
+pyqtgraph>=0.13.0
+
+# Scientific Computing
+numpy>=1.21.0
+scipy>=1.7.0
+
+# Lab Streaming Layer
+pylsl>=1.16.0
+
+# Bluetooth Communication
+bleak>=0.18.0
+
+# Data Processing
+pandas>=1.3.0
+pyxdf>=1.16.0  # For XDF file handling
+
+# Optional: Enhanced XDF support
+# Uncomment if needed:
+# h5py>=3.6.0  # For HDF5 support in XDF
+
+# Development Tools (optional)
+# pytest>=7.0.0
+# pytest-qt>=4.2.0
+# black>=22.0.0
+# mypy>=0.991

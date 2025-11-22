@@ -49,7 +49,15 @@ setup(
         "pexpect",
     ] +
     (["pylsl==1.10.5"] if os.sys.platform.startswith("linux") else ["pylsl"]),
-    extras_require={"Viewer V2": ["mne", "vispy"]},
+    extras_require={
+        "Viewer V2": ["mne", "vispy"],
+        "GUI": [
+            "PyQt6>=6.4.0",
+            "pyqtgraph>=0.13.0",
+            "scipy>=1.7.0",
+            "pyxdf>=1.16.0",
+        ]
+    },
     classifiers=[
         # How mature is this project?  Common values are
         #   3 - Alpha
