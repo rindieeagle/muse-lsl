@@ -15,9 +15,13 @@ from .streaming_panel import StreamingPanel
 from .visualization import VisualizationPanel
 from .settings_panel import SettingsPanel
 from .testing_panel import TestingPanel
+from .band_power_panel import BandPowerPanel
+from .markers_panel import MarkersPanel
 from ..backend.lsl_manager import LSLManager
 from ..backend.udp_streamer import UDPStreamer
 from ..backend.recorder import LabRecorderIntegration
+from ..backend.event_markers import EventMarkerManager
+from ..backend.artifact_detection import ArtifactDetector
 from ..resources.palette import RetroRainbowPalette, Spacing
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,8 @@ class MainWindow(QMainWindow):
         self.lsl_manager = LSLManager()
         self.udp_streamer = UDPStreamer()
         self.lab_recorder = LabRecorderIntegration()
+        self.event_marker_manager = EventMarkerManager()
+        self.artifact_detector = ArtifactDetector()
 
         # Initialize UI
         self.init_ui()
@@ -73,6 +79,8 @@ class MainWindow(QMainWindow):
         self.device_panel = DevicePanel()
         self.streaming_panel = StreamingPanel(self.lsl_manager, self.udp_streamer)
         self.visualization_panel = VisualizationPanel(self.lsl_manager)
+        self.band_power_panel = BandPowerPanel(self.lsl_manager)
+        self.markers_panel = MarkersPanel(self.event_marker_manager)
         self.settings_panel = SettingsPanel()
         self.testing_panel = TestingPanel()
 
@@ -80,6 +88,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.device_panel, "🔌 Device")
         self.tabs.addTab(self.streaming_panel, "📡 Streaming")
         self.tabs.addTab(self.visualization_panel, "📊 Visualization")
+        self.tabs.addTab(self.band_power_panel, "🧠 Band Power")
+        self.tabs.addTab(self.markers_panel, "📍 Markers")
         self.tabs.addTab(self.settings_panel, "⚙️ Settings")
         self.tabs.addTab(self.testing_panel, "🧪 Testing")
 
@@ -163,6 +173,16 @@ class MainWindow(QMainWindow):
         # Settings panel signals
         self.settings_panel.settings_changed.connect(self.on_settings_changed)
 
+        # Register artifact detector callbacks
+        self.lsl_manager.register_callback('eeg', lambda ts, data: self.artifact_detector.add_eeg_sample(data))
+        self.lsl_manager.register_callback('acc', lambda ts, data: self.artifact_detector.add_acc_sample(data))
+        self.lsl_manager.register_callback('gyro', lambda ts, data: self.artifact_detector.add_gyro_sample(data))
+
+        # Register periodic artifact detection
+        self.artifact_timer = QTimer()
+        self.artifact_timer.timeout.connect(self.check_artifacts)
+        self.artifact_timer.setInterval(2000)  # Check every 2 seconds
+
     def on_device_connected(self, address, name):
         """Handle device connection"""
         logger.info(f"Device connected: {name} ({address})")
@@ -192,6 +212,17 @@ class MainWindow(QMainWindow):
         self.lsl_status.setText("LSL: Active")
         self.testing_panel.add_log("LSL streaming started")
 
+        # Start event marker stream
+        try:
+            self.event_marker_manager.start_streaming()
+            self.markers_panel.start_recording()
+        except Exception as e:
+            logger.error(f"Failed to start marker stream: {e}")
+
+        # Start artifact detection
+        self.artifact_timer.start()
+        self.band_power_panel.start()
+
         # Auto-launch Lab Recorder if enabled
         settings = self.settings_panel.get_settings()
         if settings['lab_recorder']['auto_launch']:
@@ -202,6 +233,14 @@ class MainWindow(QMainWindow):
         logger.info("LSL streaming stopped")
         self.lsl_status.setText("LSL: Inactive")
         self.testing_panel.add_log("LSL streaming stopped")
+
+        # Stop event marker stream
+        self.event_marker_manager.stop_streaming()
+        self.markers_panel.stop_recording()
+
+        # Stop artifact detection
+        self.artifact_timer.stop()
+        self.band_power_panel.stop()
 
     def on_udp_started(self):
         """Handle UDP streaming start"""
@@ -263,6 +302,29 @@ class MainWindow(QMainWindow):
         self.lsl_status.style().polish(self.lsl_status)
         self.udp_status.style().unpolish(self.udp_status)
         self.udp_status.style().polish(self.udp_status)
+
+    def check_artifacts(self):
+        """Check for artifacts and update UI"""
+        try:
+            from pylsl import local_clock
+            timestamp = local_clock()
+
+            # Detect artifacts
+            artifacts = self.artifact_detector.detect_artifacts(timestamp)
+
+            # Log significant artifacts
+            for artifact in artifacts:
+                if artifact.severity > 0.5:  # Only log moderate to severe
+                    self.testing_panel.add_log(f"⚠ Artifact: {artifact.description}")
+                    logger.warning(f"Artifact detected: {artifact}")
+
+            # Update signal quality score in status
+            quality = self.artifact_detector.get_signal_quality_score()
+            if quality < 70:
+                self.testing_panel.add_log(f"⚠ Signal quality: {quality:.0f}/100")
+
+        except Exception as e:
+            logger.error(f"Error checking artifacts: {e}")
 
     def closeEvent(self, event):
         """Handle window close"""
